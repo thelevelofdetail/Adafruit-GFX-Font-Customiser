@@ -144,14 +144,17 @@ function setGlyphTable (table) {
   baseline.css('top', (10 + (maxBaseline + 1) * 11) + 'px')
 }
 
-function updatePixels (table, newWidth, newHeight, x, y, fill) {
+function updatePixels (table, newWidth, newHeight, x, y, fill, xMove, yMove) {
   var dataPixels = table.attr('data-pixels')
   var width = parseInt(table.attr('data-w'))
   var height = parseInt(table.attr('data-h'))
   var xoff = parseInt(table.attr('data-ow'))
   var base = parseInt(table.attr('data-oh'))
-  var xAdjust = xoff * -1;
+  var xAdjust = 0
   var yAdjust = (window['maxBaseline'] + base) * -1;
+  
+  if(xoff < 0)
+    xAdjust = xoff * -1;
 	
   if (newWidth < 0)
     newWidth = width
@@ -164,13 +167,6 @@ function updatePixels (table, newWidth, newHeight, x, y, fill) {
      x += xAdjust
 	 y += yAdjust
   }
-  // Extract the pixel values from the table
-  var pixels = ''
-  table.find('td').each(function () {
-    if (!$(this).hasClass('dead')) {
-      pixels += $(this).hasClass('fill') ? '1' : '0'
-    }
-  })
 
   // Store the pixels into a 2D bool array
   var array = [ ]
@@ -186,10 +182,67 @@ function updatePixels (table, newWidth, newHeight, x, y, fill) {
         rowArray.push(dataPixels.charAt(pixelIndex))
 	  ++pixelIndex
     }
-	array.push(rowArray)
-	
+	array.push(rowArray)	
   }
 
+  // Check if pixels are right at the edge and prevent moving them outside of bounds
+  if(yMove > 0) {
+	var lastRow = array[array.length-1]
+	for(var i = 0; i < lastRow.length; ++i) {
+		if(lastRow[i] == '1')
+			return
+	}
+  }
+  else if(yMove < 0) {
+  	var firstRow = array[0]
+	for(var i = 0; i < firstRow.length; ++i) {
+		if(firstRow[i] == '1')
+			return
+	}
+  }
+  
+  if(xMove > 0) {
+	  for (var i = 0; i < array.length; ++i) {
+		var rowArray = array[0]
+		var lastCell = rowArray[rowArray.length-1]
+		
+		if(lastCell == '1')
+			return
+	  }
+  }
+  else if(xMove < 0) {
+	  for (var i = 0; i < array.length; ++i) {
+		var rowArray = array[0]
+		var firstCell = rowArray[0]
+		
+		if(firstCell == '1')
+			return
+	  }
+  }
+  
+  if(xMove != 0 || yMove != 0)
+  {
+    var newArray = [ ]
+    for (var i = 0; i < height; ++i) {
+		var rowArray = [ ]
+		for (var j = 0; j < width; ++j) {
+			var sourceX = j - xMove
+			var sourceY = i - yMove
+			
+			if(sourceY < 0 || sourceY >= array.length || 
+			   sourceX < 0 || sourceX >= array[sourceY].length)
+			{
+				rowArray.push('0')
+				continue;
+			}
+		
+			rowArray.push(array[sourceY][sourceX])
+		}
+		newArray.push(rowArray)	
+	  }
+	  array = newArray
+  }
+  
 
   // Write out to a string newWidth x newHeight
   var newPixels = ''
@@ -334,7 +387,9 @@ $(document).ready(function () {
       buttonBar.append(makeUpDownButton('Base', 'base', 'green', 50))
       buttonBar.append(makeUpDownButton('XOff', 'xoff', 'blue', 50))
       buttonBar.append(makeUpDownButton('XAdv', 'xadv', 'teal', 50))
-
+	  buttonBar.append(makeUpDownButton('XMov', 'xmov', 'yellow', 50))
+	  buttonBar.append(makeUpDownButton('YMov', 'ymov', 'orange', 50))
+	  
       grid.append(buttonBar)
 
       $('#glyphs').append(grid)
@@ -355,7 +410,7 @@ $(document).ready(function () {
 	  fill = '1'
 	  
     var table = target.parent().parent().parent().find('table.glyph')
-    updatePixels(table, -1, -1, parseInt(target.attr('data-x')), parseInt(target.attr('data-y')), fill)
+    updatePixels(table, -1, -1, parseInt(target.attr('data-x')), parseInt(target.attr('data-y')), fill, 0, 0)
   })
 
   $(document).on('click', '.row-handler', function (e) {
@@ -369,7 +424,7 @@ $(document).ready(function () {
       height--
     }
 
-    updatePixels(table, -1, height, -1, -1, false)
+    updatePixels(table, -1, height, -1, -1, false, 0, 0)
     table.attr('data-h', height)
     setGlyphTable(table)
     return false
@@ -386,7 +441,7 @@ $(document).ready(function () {
       width--
     }
 
-    updatePixels(table, width, -1, -1, -1, false)
+    updatePixels(table, width, -1, -1, -1, false, 0, 0)
     table.attr('data-w', width)
     setGlyphTable(table)
     return false
@@ -427,6 +482,38 @@ $(document).ready(function () {
       table.attr('data-ow', parseInt(table.attr('data-ow')) - 1)
     }
 
+    setGlyphTable(table)
+    return false
+  })
+  
+  $(document).on('click', '.xmov-handler', function (e) {
+    var targetID = $(e.target).attr('id')
+    var table = $(e.target).parent().parent().parent().find('table.glyph')
+	var xMove = 0
+	
+    if (targetID == 'xmov-add') {
+      xMove = 1
+    } else if (targetID == 'xmov-remove') {
+      xMove = -1
+    }
+
+    updatePixels(table, -1, -1, -1, -1, false, xMove, 0)
+    setGlyphTable(table)
+    return false
+  })
+  
+  $(document).on('click', '.ymov-handler', function (e) {
+    var targetID = $(e.target).attr('id')
+    var table = $(e.target).parent().parent().parent().find('table.glyph')
+	var yMove = 0
+	
+    if (targetID == 'ymov-add') {
+      yMove = 1
+    } else if (targetID == 'ymov-remove') {
+      yMove = -1
+    }
+
+    updatePixels(table, -1, -1, -1, -1, false, 0, yMove)
     setGlyphTable(table)
     return false
   })
